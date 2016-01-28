@@ -213,21 +213,36 @@ def _create_index(app, model):
     return indx
 
 
+from sqlalchemy.orm import class_mapper
+
+
+def _inspect_model_attributes(model):
+    keys = [attribute.key for attribute in class_mapper(model).column_attrs]
+    columns = [attribute for attribute in class_mapper(model).columns]
+
+    fields = dict()
+
+    for key, column in zip(keys, columns):
+        fields[key] = column
+
+    return fields
+
 def _get_whoosh_schema_and_primary_key(model, analyzer):
     schema = {}
     primary = None
     searchable = set(model.__searchable__)
+    fields = _inspect_model_attributes(model)
+    for key, value in fields.iteritems():
+        if fields[key].primary_key:
+            schema[key] = whoosh.fields.ID(stored=True, unique=True)
+            primary = key
 
-    for field in model.__table__.columns:
-        if field.primary_key:
-            schema[field.name] = whoosh.fields.ID(stored=True, unique=True)
-            primary = field.name
-
-        if field.name in searchable and isinstance(field.type,
+        if key in searchable and isinstance(fields[key].type,
                 (sqlalchemy.types.Text, sqlalchemy.types.String,
                     sqlalchemy.types.Unicode)):
 
-            schema[field.name] = whoosh.fields.TEXT(analyzer=analyzer)
+            schema[key] = whoosh.fields.TEXT(
+                    analyzer=StemmingAnalyzer())
 
     return Schema(**schema), primary
 
